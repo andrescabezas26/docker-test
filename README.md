@@ -1,71 +1,166 @@
-# Getting Started with Create React App
+# README — React App (Docker + GitHub Actions -> Docker Hub)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
-hi
+> **Resumen rápido**: Este repo contiene una aplicación React dockerizada y una GitHub Action que construye la imagen y la sube a **Docker Hub** automáticamente cuando se hace push a `main`.
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## Contenido
 
-### `npm start`
+* **Qué se hizo** (paso a paso)
+* **Requisitos**
+* **Cómo levantarlo localmente**
+* **GitHub Actions** (workflow usado)
+* **Secrets** y permisos del token
+* **Comandos útiles** (build, run, stop, remove)
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+---
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## 1. Qué se hizo (paso a paso)
 
-### `npm test`
+1. Fork del repo original a tu cuenta.
+2. Se creó un `Dockerfile` para construir la app React y servirla con `nginx`.
+3. Se añadió un workflow de GitHub Actions (`.github/workflows/docker-build-push.yml`) que:
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+   * hace checkout del repo,
+   * configura Docker Buildx,
+   * se loguea a Docker Hub usando secrets,
+   * construye y hace `push` de la imagen.
+4. Se agregaron los **GitHub Secrets**: `DOCKER_USERNAME` y `DOCKER_PASSWORD` (token de Docker Hub con permiso **Read & Write**).
+5. Se descargó la imagen desde docker hub y se probó la imagen localmente, comprobandose que la app levanta en `http://localhost:8080`.
 
-### `npm run build`
+---
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## 2. Requisitos
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+* `git` instalado
+* `docker` (engine) instalado y corriendo
+* Cuenta en **Docker Hub** (para subir la imagen)
+* Secrets configurados en GitHub (repository secrets)
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+---
 
-### `npm run eject`
+## 3. Archivos importantes
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+* `Dockerfile` (raíz)
+* `.github/workflows/docker-build-push.yml` (workflow de CI)
+* `.gitignore`
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+---
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## 4. Dockerfile (ejemplo usado)
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+```dockerfile
+# Etapa 1: Build
+FROM node:18-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
 
-## Learn More
+# Etapa 2: Servir con nginx
+FROM nginx:1.24-alpine
+COPY --from=build /app/build /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+---
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## 5. Workflow de GitHub Actions (docker-build-push.yml)
 
-### Code Splitting
+Archivo: `.github/workflows/docker-build-push.yml`
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+```yaml
+name: Build and Push Docker Image
 
-### Analyzing the Bundle Size
+on:
+  push:
+    branches: [ main ]
+  pull_request:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-### Making a Progressive Web App
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-### Advanced Configuration
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/react-app:latest
+```
+![alt text](<Imagen de WhatsApp 2025-09-17 a las 14.08.58_2338582a.jpg>)
+![alt text](<Imagen de WhatsApp 2025-09-17 a las 14.09.14_ff649e9b.jpg>)
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+---
 
-### Deployment
+## 6. GitHub Secrets y permisos del token
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+* Crea un **Access Token** en Docker Hub (`Settings → Security → Access Tokens`).
+* Dale permiso **Read & Write** (necesario para `docker push`).
+* En GitHub repo: `Settings → Secrets and variables → Actions` → añade:
 
-### `npm run build` fails to minify
+  * `DOCKER_USERNAME` = tu usuario de Docker Hub
+  * `DOCKER_PASSWORD` = el token que creaste
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+> Usa **Repository secrets** si es solo para este repo. Si tenés entornos (`dev`, `prod`) puedes usar Environment secrets.
+
+![alt text](<Imagen de WhatsApp 2025-09-17 a las 14.09.40_9c261726.jpg>)
+
+---
+
+## 7. Cómo probar localmente (comandos)
+Probar pull (desde otra máquina):
+
+```bash
+docker pull <tu-usuario>/react-app:latest
+docker run -dp 8080:80 <tu-usuario>/react-app:latest
+```
+
+![alt text](<Imagen de WhatsApp 2025-09-17 a las 14.12.49_4846ee69.jpg>)
+
+![alt text](<Imagen de WhatsApp 2025-09-17 a las 14.13.21_c6cac0db.jpg>)
+
+![alt text](<Imagen de WhatsApp 2025-09-17 a las 14.12.58_c8bb41b6.jpg>)
+
+---
+
+## 8. Parar y eliminar contenedores (comandos útiles)
+
+Listado de contenedores corriendo:
+
+```bash
+docker ps
+```
+
+Parar un contenedor (por ID o NAME):
+
+```bash
+docker stop <CONTAINER_ID>
+```
+
+Eliminar un contenedor:
+
+```bash
+docker rm <CONTAINER_ID>
+```
+
+Forzar stop + remove en un solo comando:
+
+```bash
+docker rm -f <CONTAINER_ID>
+```
+![alt text](image.png)
